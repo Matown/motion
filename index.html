@@ -2,65 +2,80 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
+  <!-- 关键修改：禁止用户缩放，防止移动端误触缩放 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Motion Synth Final</title>
+  <title>Motion Synth Mobile</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <!-- 调试信息面板：帮助我们定位问题 -->
-  <div id="debug-console" style="position:fixed; top:0; left:0; width:100%; background:rgba(0,0,0,0.8); color:yellow; font-size:12px; z-index:9999; padding:5px; pointer-events:none;">
-    系统状态: 初始化中...
-  </div>
-
   <div id="overlay">
-    <h1>MOTION SYNTH</h1>
-    <p>请点击下方按钮启动</p>
-    <p style="font-size:12px; color:#666;">注意：iOS请关闭静音开关</p>
-    <button class="start-btn" id="start-btn">启动 (START)</button>
+    <h1 style="color:white; font-size: 24px;">MOTION SYNTH</h1>
+    <p style="color:#aaa; text-align: center; padding: 0 20px;">
+      请允许摄像头权限<br>
+      (iOS用户请关闭静音模式)
+    </p>
+    <button class="start-btn" id="start-btn">点击启动 (START)</button>
   </div>
 
   <div id="visual-container">
-    <!-- Canvas 会在这里 -->
+    <div id="cam-info">CAMERA FEED <span id="fps"></span></div>
+    <!-- Canvas 会插在这里 -->
   </div>
 
   <div id="controls-container">
+    
     <div class="control-group">
-      <h3>动作幅度</h3>
+      <h3>动作监测 (Motion)</h3>
       <div id="motion-meter"><div id="motion-value"></div></div>
     </div>
 
     <div class="control-group">
-      <h3>音色 (Sound)</h3>
+      <h3>振荡器 (Oscillator)</h3>
       <div class="slider-row">
         <label>波形</label>
         <select id="osc-type">
           <option value="sawtooth">锯齿波 (Saw)</option>
           <option value="square">方波 (Sqr)</option>
+          <option value="sine">正弦波 (Sine)</option>
           <option value="triangle">三角波 (Tri)</option>
         </select>
       </div>
       <div class="slider-row">
-        <label>频率</label>
+        <label>音高 (Freq)</label>
         <input type="range" id="base-freq" min="50" max="600" value="150">
       </div>
     </div>
-    
+
     <div class="control-group">
-      <h3>效果 (FX)</h3>
+      <h3>滤波器 (Filter)</h3>
       <div class="slider-row">
-        <label>滤波</label>
+        <label>频率</label>
         <input type="range" id="filter-cutoff" min="100" max="5000" value="1000">
       </div>
+      <div class="slider-row">
+        <label>共振</label>
+        <input type="range" id="filter-res" min="0" max="20" value="5">
+      </div>
+    </div>
+
+    <div class="control-group">
+      <h3>效果 (FX)</h3>
       <div class="slider-row">
         <label>失真</label>
         <input type="range" id="dist-amt" min="0" max="1" step="0.01" value="0.2">
       </div>
+      <div class="slider-row">
+        <label>混响</label>
+        <input type="range" id="reverb-wet" min="0" max="1" step="0.01" value="0.3">
+      </div>
     </div>
     
+    <!-- 底部占位，防止最后一个控件被遮挡 -->
     <div style="height: 50px;"></div>
+
   </div>
 
   <script src="script.js"></script>
