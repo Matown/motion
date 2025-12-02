@@ -2,82 +2,93 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <!-- 关键修改：禁止用户缩放，防止移动端误触缩放 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Motion Synth Mobile</title>
+  <title>Motion Synth Pro</title>
+  
+  <!-- 引入外部样式表 -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- 引入第三方库 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
-  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
+  <!-- 启动覆盖层 -->
   <div id="overlay">
-    <h1 style="color:white; font-size: 24px;">MOTION SYNTH</h1>
-    <p style="color:#aaa; text-align: center; padding: 0 20px;">
+    <h1 class="title">MOTION SYNTH</h1>
+    <p class="subtitle">
       请允许摄像头权限<br>
-      (iOS用户请关闭静音模式)
+      打开音量体验最佳
     </p>
-    <button class="start-btn" id="start-btn">点击启动 (START)</button>
+    <button class="start-btn" id="start-btn">点 击 启 动</button>
   </div>
 
+  <!-- 左/上侧：视觉容器 -->
   <div id="visual-container">
-    <div id="cam-info">CAMERA FEED <span id="fps"></span></div>
-    <!-- Canvas 会插在这里 -->
+    <div class="live-tag">
+      LIVE FEED <span id="res-info"></span>
+    </div>
   </div>
 
+  <!-- 右/下侧：控制台容器 -->
   <div id="controls-container">
     
+    <!-- 监测模块 -->
     <div class="control-group">
-      <h3>动作监测 (Motion)</h3>
+      <h3>Monitor (监测)</h3>
+      <div style="display:flex; justify-content:space-between; font-size:12px;">
+        <span>Activity: <span id="motion-text">0</span>%</span>
+      </div>
       <div id="motion-meter"><div id="motion-value"></div></div>
     </div>
 
+    <!-- 振荡器模块 -->
     <div class="control-group">
-      <h3>振荡器 (Oscillator)</h3>
+      <h3>Oscillator</h3>
       <div class="slider-row">
-        <label>波形</label>
+        <label>Wave</label>
         <select id="osc-type">
-          <option value="sawtooth">锯齿波 (Saw)</option>
-          <option value="square">方波 (Sqr)</option>
-          <option value="sine">正弦波 (Sine)</option>
-          <option value="triangle">三角波 (Tri)</option>
+          <option value="sawtooth">Saw (锯齿)</option>
+          <option value="square">Square (方波)</option>
+          <option value="sine">Sine (正弦)</option>
+          <option value="triangle">Tri (三角)</option>
         </select>
       </div>
       <div class="slider-row">
-        <label>音高 (Freq)</label>
+        <label>Pitch</label>
         <input type="range" id="base-freq" min="50" max="600" value="150">
       </div>
     </div>
 
+    <!-- 滤波器模块 -->
     <div class="control-group">
-      <h3>滤波器 (Filter)</h3>
+      <h3>Filter</h3>
       <div class="slider-row">
-        <label>频率</label>
+        <label>Cutoff</label>
         <input type="range" id="filter-cutoff" min="100" max="5000" value="1000">
       </div>
       <div class="slider-row">
-        <label>共振</label>
+        <label>Resonance</label>
         <input type="range" id="filter-res" min="0" max="20" value="5">
       </div>
     </div>
 
+    <!-- 效果器模块 -->
     <div class="control-group">
-      <h3>效果 (FX)</h3>
+      <h3>Effects</h3>
       <div class="slider-row">
-        <label>失真</label>
+        <label>Distortion</label>
         <input type="range" id="dist-amt" min="0" max="1" step="0.01" value="0.2">
       </div>
       <div class="slider-row">
-        <label>混响</label>
+        <label>Reverb</label>
         <input type="range" id="reverb-wet" min="0" max="1" step="0.01" value="0.3">
       </div>
     </div>
-    
-    <!-- 底部占位，防止最后一个控件被遮挡 -->
-    <div style="height: 50px;"></div>
-
   </div>
 
+  <!-- 引入我们的逻辑脚本 -->
   <script src="script.js"></script>
 </body>
 </html>

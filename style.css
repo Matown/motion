@@ -1,58 +1,60 @@
-/* 全局样式 */
+/* 全局重置 */
+* { box-sizing: border-box; }
+
 body {
   margin: 0;
   background: #1a1a1a;
   color: #ddd;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: 'Courier New', Courier, monospace;
   height: 100vh;
+  width: 100vw;
   display: flex;
-  flex-direction: row; /* 默认电脑端：横向排列 */
-  overflow: hidden; 
+  flex-direction: row;
+  overflow: hidden;
 }
 
-/* 左侧视觉容器 */
+/* 布局容器 */
 #visual-container {
-  flex: 1; 
+  flex: 1;
   background: #000;
-  border-right: 2px solid #444;
   position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
   overflow: hidden;
+  border-right: 2px solid #444;
 }
 
-#cam-info {
-  position: absolute; 
-  top: 10px; 
-  left: 10px; 
-  color: #00ff88; 
-  z-index: 5;
-  font-family: monospace;
-  background: rgba(0,0,0,0.5);
-  padding: 2px 5px;
-}
-
-/* 让 Canvas 在容器内自适应，保持比例 */
-canvas {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
-/* 右侧控制台 */
 #controls-container {
-  flex: 1; 
+  flex: 1;
   padding: 20px;
-  overflow-y: auto; /* 允许垂直滚动 */
+  overflow-y: auto;
   background: #222;
   display: flex;
   flex-direction: column;
   gap: 15px;
-  -webkit-overflow-scrolling: touch; /* iOS 滚动优化 */
+  padding-bottom: 50px;
 }
 
-/* 启动层 */
+/* 响应式适配 (手机端) */
+@media (max-width: 768px) {
+  body { flex-direction: column; }
+  
+  #visual-container { 
+    flex: 0 0 45%; 
+    border-right: none; 
+    border-bottom: 2px solid #444; 
+  }
+  
+  #controls-container { 
+    flex: 1; 
+    padding: 15px; 
+  }
+  
+  input[type=range] { height: 30px; }
+}
+
+/* 启动遮罩层 */
 #overlay {
   position: absolute;
   top: 0; left: 0; width: 100%; height: 100%;
@@ -60,13 +62,18 @@ canvas {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 100;
+  z-index: 999;
   flex-direction: column;
+  text-align: center;
+  padding: 20px;
 }
+
+.title { color: white; font-size: 24px; }
+.subtitle { color: #aaa; font-size: 14px; line-height: 1.5; }
 
 button.start-btn {
   padding: 20px 40px;
-  font-size: 18px;
+  font-size: 20px;
   background: #00ff88;
   border: none;
   border-radius: 50px;
@@ -74,65 +81,75 @@ button.start-btn {
   color: #000;
   font-weight: bold;
   margin-top: 20px;
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.4);
+  transition: transform 0.1s;
+}
+button.start-btn:active { transform: scale(0.95); }
+
+/* UI 组件 */
+.live-tag {
+  position: absolute; top: 10px; left: 10px; 
+  color: #00ff88; z-index: 10; 
+  background: rgba(0,0,0,0.5); 
+  padding: 2px 5px; border-radius: 4px; 
+  font-size: 10px;
 }
 
-/* 控件样式 */
-.control-group {
-  background: #333;
-  padding: 15px;
-  border-radius: 12px;
-  border: 1px solid #444;
+canvas { 
+  width: 100% !important; 
+  height: 100% !important; 
+  object-fit: contain; 
 }
-.control-group h3 {
-  margin: 0 0 10px 0;
-  color: #00ff88;
-  font-size: 14px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+
+.control-group { 
+  background: #333; 
+  padding: 12px; 
+  border-radius: 12px; 
+  border: 1px solid #444; 
 }
-.slider-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+
+.control-group h3 { 
+  margin-top: 0; margin-bottom: 10px; 
+  color: #00ff88; font-size: 14px; 
+  border-bottom: 1px solid #555; 
+  padding-bottom: 5px; 
+  text-transform: uppercase; 
 }
-label { font-size: 14px; color: #ccc; }
+
+.slider-row { 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  margin-bottom: 12px; 
+}
+
+label { font-size: 13px; color: #aaa; }
+
 input[type=range] { 
-  width: 60%; 
-  height: 20px; /* 增大触摸区域 */
+  width: 55%; 
+  cursor: pointer; 
+  accent-color: #00ff88; 
 }
+
 select { 
   padding: 8px; 
   background: #ddd; 
   border-radius: 4px; 
-  font-size: 14px;
+  border: none; 
+  width: 55%; 
 }
 
-#motion-meter {
-  width: 100%; height: 8px; background: #444; border-radius: 4px; overflow: hidden;
+#motion-meter { 
+  width: 100%; height: 8px; 
+  background: #444; 
+  border-radius: 4px; 
+  margin-top: 5px; 
+  overflow: hidden; 
 }
-#motion-value {
-  height: 100%; background: #00ff88; width: 0%; transition: width 0.05s linear;
-}
 
-/* --- 移动端适配关键 CSS --- */
-@media (max-width: 768px) {
-  body {
-    flex-direction: column; /* 改为垂直排列 */
-  }
-
-  #visual-container {
-    flex: 0 0 45vh; /* 视觉区域占屏幕 45% 高度 */
-    border-right: none;
-    border-bottom: 2px solid #444;
-  }
-
-  #controls-container {
-    flex: 1; /* 剩余空间给控制台 */
-    padding: 15px;
-  }
-
-  button.start-btn {
-    width: 80%;
-  }
+#motion-value { 
+  height: 100%; 
+  background: #00ff88; 
+  width: 0%; 
+  transition: width 0.1s; 
 }
