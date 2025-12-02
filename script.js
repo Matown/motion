@@ -1,61 +1,66 @@
 // --- 变量定义 ---
 let video;
 let prevPixels; 
-let isMobile = false; // 是否为移动端
-let w, h; // 动态分辨率
+let isMobile = false; 
+let w, h; 
+let scanStep;
+let motionThreshold;  
 
-// 核心参数
-let motionThreshold;  // 像素变色阈值 (越小越灵敏)
-let triggerThreshold; // 触发声音的动作总量百分比
-let scanStep;         // 扫描步长 (1=逐点, 2=隔行)
-
-let synth, filter, distortion, reverb;
+let synth, filter, distortion, reverb, limiter;
 let isStarted = false;
 
 function setup() {
-  // 1. 智能设备检测
-  // 如果屏幕宽度小于 800，我们认为是手机/平板，开启性能优化模式
+  // 1. 设备检测与参数配置
   isMobile = window.innerWidth < 800;
 
   if (isMobile) {
-    // [手机模式] 低分屏 + 隔行扫描 + 高容差(防抖)
-    w = 320; 
-    h = 240;
-    scanStep = 2;       // 每隔一个像素测一次，性能提升4倍
-    motionThreshold = 40; // 手机摄像头噪点多，阈值调高
-    triggerThreshold = 0.005; // 动作占比超过 0.5% 触发
+    // 手机: 320x240, 隔行扫描
+    w = 320; h = 240;
+    scanStep = 2;       
+    motionThreshold = 50; 
   } else {
-    // [电脑模式] 高分屏 + 逐点扫描 + 高灵敏度
-    w = 640; 
-    h = 480;
-    scanStep = 1;       // 每一个像素都测，极致丝滑
-    motionThreshold = 25; // 电脑Webcam通常较清晰，阈值调低更灵敏
-    triggerThreshold = 0.001; // 动作占比超过 0.1% 就触发 (非常灵敏)
+    // 电脑: 640x480, 逐点扫描
+    w = 640; h = 480;
+    scanStep = 1;       
+    motionThreshold = 30; 
   }
 
   // 2. 创建画布
   let cnv = createCanvas(w, h); 
   cnv.parent('visual-container');
-  pixelDensity(1); // 统一像素密度，防止Retina屏计算量爆炸
-  
-  // 3. 摄像头配置
-  let constraints = {
-    video: {
-      width: { ideal: w },
-      height: { ideal: h },
-      facingMode: "user"
-    },
-    audio: false
-  };
+  pixelDensity(1); 
 
-  video = createCapture(constraints);
+  // 3. 摄像头配置 (修复手机黑屏问题的核心)
+  let constraints;
+  if (isMobile) {
+    // 【手机端高兼容写法】
+    // 不再指定分辨率，只要求前置摄像头。
+    // 分辨率由下方的 video.size() 强制缩放。
+    constraints = {
+      audio: false,
+      video: {
+        facingMode: "user"
+      }
+    };
+  } else {
+    // 电脑端直接调用默认
+    constraints = VIDEO;
+  }
+
+  video = createCapture(constraints, function(stream) {
+    // 摄像头成功回调 (调试用)
+    console.log("Camera started");
+  });
+  
+  // 强制缩放视频流到我们需要的大小
   video.size(w, h);
   video.hide();
-  video.elt.setAttribute('playsinline', ''); // 兼容 iOS
+  video.elt.setAttribute('playsinline', ''); 
 
   // 4. UI 绑定
   let startBtn = document.getElementById('start-btn');
   startBtn.addEventListener('click', async () => {
+    // 必须由用户手势触发 AudioContext
     await Tone.start();
     setupAudio();
     isStarted = true;
@@ -74,6 +79,9 @@ function draw() {
     return;
   }
 
+  // 确保视频已加载
+  if (video.loadedmetadata === false) return;
+  
   video.loadPixels();
   if (video.pixels.length === 0) return;
 
@@ -86,15 +94,13 @@ function draw() {
 
   loadPixels(); 
 
-  // --- 动态扫描循环 ---
-  // 根据 scanStep 决定是逐行还是隔行
+  // 扫描逻辑
   for (let y = 0; y < h; y += scanStep) {
     for (let x = 0; x < w; x += scanStep) {
       
       let i = (y * w + x) * 4;
       totalPixelsChecked++;
 
-      // 快速获取 RGB
       let r = video.pixels[i];
       let g = video.pixels[i + 1];
       let b = video.pixels[i + 2];
@@ -103,31 +109,23 @@ function draw() {
       let pg = prevPixels[i + 1];
       let pb = prevPixels[i + 2];
 
-      // 快速计算差异 (曼哈顿距离比欧氏距离快，适合实时计算)
+      // 简化的颜色距离计算
       let diff = Math.abs(r - pr) + Math.abs(g - pg) + Math.abs(b - pb);
 
       if (diff > motionThreshold * 3) { 
         movedPixelsCount++;
         
-        // --- 视觉增强 ---
-        // 电脑上画得细腻点，手机上画得明显点
-        pixels[i] = 0;     // R
-        pixels[i+1] = 255; // G (高亮绿)
-        pixels[i+2] = 150; // B
-        pixels[i+3] = 255; // A
+        // 视觉反馈：绿色高亮
+        pixels[i] = 0; pixels[i+1] = 255; pixels[i+2] = 100; pixels[i+3] = 255;
 
-        // 如果是手机(隔行扫描)，我们需要由于跳过了像素，
-        // 为了视觉连续性，把旁边跳过的像素也填上颜色（视觉补偿）
+        // 手机端视觉补偿 (填补隔行扫描的空隙)
         if (isMobile) {
-          pixels[i+4] = 0; pixels[i+5] = 255; pixels[i+6] = 150; pixels[i+7] = 255;
+          pixels[i+4] = 0; pixels[i+5] = 255; pixels[i+6] = 100; pixels[i+7] = 255;
         }
 
       } else {
-        // 背景变暗，营造赛博感
-        pixels[i] = r * 0.2;
-        pixels[i+1] = g * 0.2;
-        pixels[i+2] = b * 0.2;
-        pixels[i+3] = 255;
+        // 变暗
+        pixels[i] = r * 0.2; pixels[i+1] = g * 0.2; pixels[i+2] = b * 0.2; pixels[i+3] = 255;
       }
     }
   }
@@ -135,70 +133,90 @@ function draw() {
   updatePixels(); 
   prevPixels.set(video.pixels); 
 
-  // --- 归一化算法 (解决分辨率差异的核心) ---
-  // 无论分辨率多少，我们只看“动的像素占总检测像素的百分比”
-  // motionRatio 范围 0.0 到 1.0
+  // 计算动作百分比 (0.0 - 1.0)
   let motionRatio = movedPixelsCount / totalPixelsChecked;
-
-  // 使用指数曲线放大微小动作，让操作更跟手
-  // 比如轻微挥手也能触发声音
+  
+  // 更新音频与UI
   updateAudioFromMotion(motionRatio);
   updateUI(motionRatio);
 }
 
-// --- 音频逻辑 ---
+// --- 音频增强版 ---
 
 function setupAudio() {
+  // 1. 限制器 (Limiter): 放在最后，防止爆音，允许我们在前面把音量推大
+  limiter = new Tone.Limiter(0).toDestination();
+
+  // 2. 混响
+  reverb = new Tone.Reverb({ decay: 2, wet: 0.4 }).connect(limiter);
+
+  // 3. 滤波器
   filter = new Tone.Filter({
-    frequency: 1000,
+    frequency: 500,
     type: "lowpass",
-    rolloff: -12
-  });
+    rolloff: -24 // 更陡峭的切除，共振时声音更锋利
+  }).connect(reverb);
 
-  distortion = new Tone.Distortion(0.2);
-  reverb = new Tone.Reverb({ decay: 3, wet: 0.3 }).toDestination();
+  // 4. 失真
+  distortion = new Tone.Distortion(0.4).connect(filter);
 
+  // 5. 合成器 (Volume Boosted)
   synth = new Tone.MonoSynth({
-    oscillator: { type: "sawtooth" },
-    envelope: { attack: 0.1, decay: 0.3, sustain: 0.5, release: 0.8 },
-    filterEnvelope: { attack: 0.01, decay: 0.1, sustain: 0, baseFrequency: 200, octaves: 2 }
-  });
+    oscillator: { type: "sawtooth" }, // 锯齿波本身最响亮
+    envelope: { 
+      attack: 0.05, 
+      decay: 0.2, 
+      sustain: 1.0, // 【关键】设为1.0，只要有动作，声音就是满音量，不衰减
+      release: 1 
+    },
+    filterEnvelope: { 
+      attack: 0.01, 
+      decay: 0.1, 
+      sustain: 0.5, 
+      baseFrequency: 200, 
+      octaves: 3 
+    }
+  }).connect(distortion);
 
-  synth.chain(distortion, filter, reverb);
+  // 初始化音量为静音
   synth.volume.value = -Infinity; 
+  // 触发一个持续的长音
   synth.triggerAttack("C2"); 
 }
 
 function updateAudioFromMotion(ratio) {
   if (!synth) return;
 
-  // 这里的映射逻辑改为基于百分比
-  // 如果动作占比超过 triggerThreshold (比如 0.1%)
-  if (ratio > triggerThreshold) {
-    
-    // 映射音量：从 -20dB 到 0dB
-    // 动作越大，声音越响
-    // input范围: triggerThreshold ~ 0.2 (假设动作最大占屏幕20%)
-    let targetVol = map(ratio, triggerThreshold, 0.2, -20, 0, true);
-    synth.volume.rampTo(targetVol, 0.1);
+  // 设定触发门槛 (手机上可以设低一点)
+  let threshold = isMobile ? 0.005 : 0.001; 
 
-    // 映射滤波器 (Wah-Wah 效果)
+  if (ratio > threshold) {
+    // 【音量增强逻辑】
+    // map的输出范围从 0 改为 +6 (分贝)。
+    // 之前是 -20 到 0。现在 +6dB 意味着音量翻倍。
+    // 有限制器保护，不会炸麦。
+    // input max 设为 0.15，意味着不需要很剧烈的动作就能达到最大音量
+    let targetVol = map(ratio, threshold, 0.15, -10, 6, true);
+    synth.volume.rampTo(targetVol, 0.05); // 响应更快
+
+    // 【滤波器增强逻辑】
+    // 动作越大，滤波器开得越大。加上 5000Hz 的范围，声音会变得很亮、很炸。
     let baseCutoff = parseFloat(document.getElementById('filter-cutoff').value);
-    let modFreq = baseCutoff + map(ratio, triggerThreshold, 0.3, 0, 4000, true);
-    filter.frequency.rampTo(modFreq, 0.1);
+    let modFreq = baseCutoff + map(ratio, threshold, 0.3, 0, 6000, true);
+    filter.frequency.rampTo(modFreq, 0.05);
     
-    // 映射音高微调 (Detune)
+    // 音高微调
     let baseFreq = parseFloat(document.getElementById('base-freq').value);
-    synth.frequency.rampTo(baseFreq + (ratio * 100), 0.1);
+    synth.frequency.rampTo(baseFreq + (ratio * 50), 0.1);
 
   } else {
-    // 没动作时快速静音
+    // 快速静音
     synth.volume.rampTo(-Infinity, 0.2);
   }
 }
 
 function updateUI(ratio) {
-  // UI显示也放大一下，方便观看
+  // 放大 UI 显示，让微小的动作也能看出来
   let percent = map(ratio, 0, 0.1, 0, 100, true);
   document.getElementById('motion-value').style.width = percent + "%";
 }
@@ -208,7 +226,7 @@ function bindControls() {
     if(synth) synth.oscillator.type = e.target.value;
   });
   document.getElementById('base-freq').addEventListener('input', (e) => {
-     if(synth) synth.frequency.rampTo(parseFloat(e.target.value), 0.1);
+     // 实时反馈
   });
   document.getElementById('filter-res').addEventListener('input', (e) => {
     if(filter) filter.Q.value = parseFloat(e.target.value);
