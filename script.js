@@ -149,25 +149,38 @@ function draw() {
 // --- 音频逻辑 ---
 
 function setupAudio() {
-  filter = new Tone.Filter({
-    frequency: 1000,
-    type: "lowpass",
-    rolloff: -12
-  });
+      // 1. 滤波器 (Lowpass)
+      // 【修正】Tone.Filter 是静态效果器，不需要 .start()
+      // 这里我们也修正了参数写法，使用对象传参更稳健
+      filter = new Tone.Filter({
+        frequency: 1000,
+        type: "lowpass",
+        rolloff: -12
+      });
 
-  distortion = new Tone.Distortion(0.2);
-  reverb = new Tone.Reverb({ decay: 3, wet: 0.3 }).toDestination();
+      // 2. 失真
+      distortion = new Tone.Distortion(0.2);
 
-  synth = new Tone.MonoSynth({
-    oscillator: { type: "sawtooth" },
-    envelope: { attack: 0.1, decay: 0.3, sustain: 0.5, release: 0.8 },
-    filterEnvelope: { attack: 0.01, decay: 0.1, sustain: 0, baseFrequency: 200, octaves: 2 }
-  });
+      // 3. 混响
+      // 生成混响脉冲可能需要一点时间，所以使用 generate() 并不是必须的，
+      // 但直接实例化通常没问题。为了保险，我们简化参数。
+      reverb = new Tone.Reverb({ decay: 3, wet: 0.3 }).toDestination();
 
-  synth.chain(distortion, filter, reverb);
-  synth.volume.value = -Infinity; 
-  synth.triggerAttack("C2"); 
-}
+      // 4. 合成器 (MonoSynth)
+      synth = new Tone.MonoSynth({
+        oscillator: { type: "sawtooth" },
+        envelope: { attack: 0.1, decay: 0.3, sustain: 0.5, release: 0.8 },
+        filterEnvelope: { attack: 0.01, decay: 0.1, sustain: 0, baseFrequency: 200, octaves: 2 }
+      });
+
+      // 连线: Synth -> Distortion -> Filter -> Reverb -> Speakers
+      synth.chain(distortion, filter, reverb);
+
+      // 启动一个持续的 Drone 音
+      // 初始音量设为极低 (-Infinity db)
+      synth.volume.value = -Infinity; 
+      synth.triggerAttack("C2"); 
+    }
 
 function updateAudioFromMotion(ratio) {
   if (!synth) return;
@@ -220,3 +233,4 @@ function bindControls() {
     if(reverb) reverb.wet.value = parseFloat(e.target.value);
   });
 }
+
