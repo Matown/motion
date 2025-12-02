@@ -1,42 +1,62 @@
+// --- 变量定义 ---
 let video;
 let prevPixels; 
-let motionThreshold = 40; // 手机上稍微灵敏一点
-let totalMotion = 0; 
+let isMobile = false; // 是否为移动端
+let w, h; // 动态分辨率
+
+// 核心参数
+let motionThreshold;  // 像素变色阈值 (越小越灵敏)
+let triggerThreshold; // 触发声音的动作总量百分比
+let scanStep;         // 扫描步长 (1=逐点, 2=隔行)
 
 let synth, filter, distortion, reverb;
 let isStarted = false;
 
 function setup() {
-  // 不再根据容器大小创建 Canvas，而是固定一个小分辨率以保证性能
-  // 手机性能有限，320x240 是平衡点
-  let cnv = createCanvas(320, 240); 
+  // 1. 智能设备检测
+  // 如果屏幕宽度小于 800，我们认为是手机/平板，开启性能优化模式
+  isMobile = window.innerWidth < 800;
+
+  if (isMobile) {
+    // [手机模式] 低分屏 + 隔行扫描 + 高容差(防抖)
+    w = 320; 
+    h = 240;
+    scanStep = 2;       // 每隔一个像素测一次，性能提升4倍
+    motionThreshold = 40; // 手机摄像头噪点多，阈值调高
+    triggerThreshold = 0.005; // 动作占比超过 0.5% 触发
+  } else {
+    // [电脑模式] 高分屏 + 逐点扫描 + 高灵敏度
+    w = 640; 
+    h = 480;
+    scanStep = 1;       // 每一个像素都测，极致丝滑
+    motionThreshold = 25; // 电脑Webcam通常较清晰，阈值调低更灵敏
+    triggerThreshold = 0.001; // 动作占比超过 0.1% 就触发 (非常灵敏)
+  }
+
+  // 2. 创建画布
+  let cnv = createCanvas(w, h); 
   cnv.parent('visual-container');
+  pixelDensity(1); // 统一像素密度，防止Retina屏计算量爆炸
   
-  // 强制像素密度为 1，这对于 Retina 屏幕的手机至关重要，否则会非常卡
-  pixelDensity(1); 
-  
-  // --- 摄像头配置 (移动端核心修改) ---
+  // 3. 摄像头配置
   let constraints = {
     video: {
-      facingMode: "user", // 优先使用前置摄像头
-      width: { ideal: 320 },
-      height: { ideal: 240 }
+      width: { ideal: w },
+      height: { ideal: h },
+      facingMode: "user"
     },
     audio: false
   };
 
   video = createCapture(constraints);
-  video.size(320, 240);
+  video.size(w, h);
   video.hide();
-  
-  // 【关键】兼容 iOS Safari，防止视频自动全屏
-  video.elt.setAttribute('playsinline', '');
+  video.elt.setAttribute('playsinline', ''); // 兼容 iOS
 
-  // UI 事件
-  // 使用 touchstart 以获得更快的移动端响应，但 click 兼容性更好
+  // 4. UI 绑定
   let startBtn = document.getElementById('start-btn');
   startBtn.addEventListener('click', async () => {
-    await Tone.start(); // 必须由用户手势触发
+    await Tone.start();
     setupAudio();
     isStarted = true;
     document.getElementById('overlay').style.display = 'none';
@@ -49,36 +69,32 @@ function draw() {
   background(0);
 
   if (!isStarted) {
-    fill(255); noStroke();
-    textAlign(CENTER);
-    textSize(16);
+    fill(255); noStroke(); textAlign(CENTER); textSize(16);
     text("等待启动...", width/2, height/2);
     return;
   }
 
   video.loadPixels();
-  
-  // 如果摄像头还没准备好，就跳过
   if (video.pixels.length === 0) return;
 
   if (!prevPixels) {
     prevPixels = new Uint8Array(video.pixels);
   }
 
-  let motionCount = 0; 
+  let movedPixelsCount = 0; 
+  let totalPixelsChecked = 0;
+
   loadPixels(); 
 
-  // 为了手机性能优化，步长设为 8 (降低检测精度，提高 FPS)
-  // i += 4 (RGBA) * 2 (隔一个像素点测一次)
-  let step = 8; 
+  // --- 动态扫描循环 ---
+  // 根据 scanStep 决定是逐行还是隔行
+  for (let y = 0; y < h; y += scanStep) {
+    for (let x = 0; x < w; x += scanStep) {
+      
+      let i = (y * w + x) * 4;
+      totalPixelsChecked++;
 
-  for (let y = 0; y < video.height; y += 2) {
-    for (let x = 0; x < video.width; x += 2) {
-      let i = (y * video.width + x) * 4;
-
-      // 边界检查
-      if (i >= video.pixels.length) continue;
-
+      // 快速获取 RGB
       let r = video.pixels[i];
       let g = video.pixels[i + 1];
       let b = video.pixels[i + 2];
@@ -87,20 +103,27 @@ function draw() {
       let pg = prevPixels[i + 1];
       let pb = prevPixels[i + 2];
 
+      // 快速计算差异 (曼哈顿距离比欧氏距离快，适合实时计算)
       let diff = Math.abs(r - pr) + Math.abs(g - pg) + Math.abs(b - pb);
 
-      // 为了视觉效果，我们还是需要填充像素
-      // 但为了性能，我们画大一点的矩形，而不是操作像素数组？
-      // 不，操作像素数组在低分辨率下其实比画几千个 rect 快。
-      
-      // 简化算法：只比较简单的亮度差，或者 RGB 距离
-      if (diff > motionThreshold * 3) { // *3 是因为上面是简单的加法
-        motionCount++;
-        pixels[i] = 0;     pixels[i+1] = 255; 
-        pixels[i+2] = 136; pixels[i+3] = 255;
-        // 简单的“膨胀”效果，让动点看起来更粗，弥补隔行扫描的空隙
-        pixels[i+4] = 0;   pixels[i+5] = 255;
+      if (diff > motionThreshold * 3) { 
+        movedPixelsCount++;
+        
+        // --- 视觉增强 ---
+        // 电脑上画得细腻点，手机上画得明显点
+        pixels[i] = 0;     // R
+        pixels[i+1] = 255; // G (高亮绿)
+        pixels[i+2] = 150; // B
+        pixels[i+3] = 255; // A
+
+        // 如果是手机(隔行扫描)，我们需要由于跳过了像素，
+        // 为了视觉连续性，把旁边跳过的像素也填上颜色（视觉补偿）
+        if (isMobile) {
+          pixels[i+4] = 0; pixels[i+5] = 255; pixels[i+6] = 150; pixels[i+7] = 255;
+        }
+
       } else {
+        // 背景变暗，营造赛博感
         pixels[i] = r * 0.2;
         pixels[i+1] = g * 0.2;
         pixels[i+2] = b * 0.2;
@@ -111,76 +134,76 @@ function draw() {
   
   updatePixels(); 
   prevPixels.set(video.pixels); 
-  
-  // 放大动作数值以适应采样率的降低
-  totalMotion = motionCount * 2; 
-  updateAudioFromMotion(totalMotion);
-  updateUI(totalMotion);
+
+  // --- 归一化算法 (解决分辨率差异的核心) ---
+  // 无论分辨率多少，我们只看“动的像素占总检测像素的百分比”
+  // motionRatio 范围 0.0 到 1.0
+  let motionRatio = movedPixelsCount / totalPixelsChecked;
+
+  // 使用指数曲线放大微小动作，让操作更跟手
+  // 比如轻微挥手也能触发声音
+  updateAudioFromMotion(motionRatio);
+  updateUI(motionRatio);
 }
 
-// --- 音频部分保持不变 ---
+// --- 音频逻辑 ---
+
 function setupAudio() {
-      // 1. 滤波器 (Lowpass)
-      // 【修正】Tone.Filter 是静态效果器，不需要 .start()
-      // 这里我们也修正了参数写法，使用对象传参更稳健
-      filter = new Tone.Filter({
-        frequency: 1000,
-        type: "lowpass",
-        rolloff: -12
-      });
+  filter = new Tone.Filter({
+    frequency: 1000,
+    type: "lowpass",
+    rolloff: -12
+  });
 
-      // 2. 失真
-      distortion = new Tone.Distortion(0.2);
+  distortion = new Tone.Distortion(0.2);
+  reverb = new Tone.Reverb({ decay: 3, wet: 0.3 }).toDestination();
 
-      // 3. 混响
-      // 生成混响脉冲可能需要一点时间，所以使用 generate() 并不是必须的，
-      // 但直接实例化通常没问题。为了保险，我们简化参数。
-      reverb = new Tone.Reverb({ decay: 3, wet: 0.3 }).toDestination();
+  synth = new Tone.MonoSynth({
+    oscillator: { type: "sawtooth" },
+    envelope: { attack: 0.1, decay: 0.3, sustain: 0.5, release: 0.8 },
+    filterEnvelope: { attack: 0.01, decay: 0.1, sustain: 0, baseFrequency: 200, octaves: 2 }
+  });
 
-      // 4. 合成器 (MonoSynth)
-      synth = new Tone.MonoSynth({
-        oscillator: { type: "sawtooth" },
-        envelope: { attack: 0.1, decay: 0.3, sustain: 0.5, release: 0.8 },
-        filterEnvelope: { attack: 0.01, decay: 0.1, sustain: 0, baseFrequency: 200, octaves: 2 }
-      });
+  synth.chain(distortion, filter, reverb);
+  synth.volume.value = -Infinity; 
+  synth.triggerAttack("C2"); 
+}
 
-      // 连线: Synth -> Distortion -> Filter -> Reverb -> Speakers
-      synth.chain(distortion, filter, reverb);
-
-      // 启动一个持续的 Drone 音
-      // 初始音量设为极低 (-Infinity db)
-      synth.volume.value = -Infinity; 
-      synth.triggerAttack("C2"); 
-    }
-
-function updateAudioFromMotion(motionAmount) {
+function updateAudioFromMotion(ratio) {
   if (!synth) return;
 
-  // 手机摄像头噪点多，增加一点门限值
-  if (motionAmount > 150) {
-    let targetVol = map(motionAmount, 150, 3000, -20, 0, true);
+  // 这里的映射逻辑改为基于百分比
+  // 如果动作占比超过 triggerThreshold (比如 0.1%)
+  if (ratio > triggerThreshold) {
+    
+    // 映射音量：从 -20dB 到 0dB
+    // 动作越大，声音越响
+    // input范围: triggerThreshold ~ 0.2 (假设动作最大占屏幕20%)
+    let targetVol = map(ratio, triggerThreshold, 0.2, -20, 0, true);
     synth.volume.rampTo(targetVol, 0.1);
 
+    // 映射滤波器 (Wah-Wah 效果)
     let baseCutoff = parseFloat(document.getElementById('filter-cutoff').value);
-    let modFreq = baseCutoff + map(motionAmount, 150, 3000, 0, 3000, true);
+    let modFreq = baseCutoff + map(ratio, triggerThreshold, 0.3, 0, 4000, true);
     filter.frequency.rampTo(modFreq, 0.1);
     
+    // 映射音高微调 (Detune)
     let baseFreq = parseFloat(document.getElementById('base-freq').value);
-    synth.frequency.rampTo(baseFreq + (motionAmount * 0.02), 0.1);
+    synth.frequency.rampTo(baseFreq + (ratio * 100), 0.1);
 
   } else {
-    synth.volume.rampTo(-Infinity, 0.5);
+    // 没动作时快速静音
+    synth.volume.rampTo(-Infinity, 0.2);
   }
 }
 
-function updateUI(motion) {
-  // 使用 requestAnimationFrame 节流 UI 更新（可选，为了流畅度暂不加复杂逻辑）
-  let percent = map(motion, 0, 3000, 0, 100, true);
+function updateUI(ratio) {
+  // UI显示也放大一下，方便观看
+  let percent = map(ratio, 0, 0.1, 0, 100, true);
   document.getElementById('motion-value').style.width = percent + "%";
 }
 
 function bindControls() {
-  // 移动端的 input 事件有时候会频繁触发，但 Tone.js 处理得过来
   document.getElementById('osc-type').addEventListener('change', (e) => {
     if(synth) synth.oscillator.type = e.target.value;
   });
